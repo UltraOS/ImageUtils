@@ -63,11 +63,13 @@ class DiskImage:
         hyper_iso_br_path: Optional[str] = None,
         hyper_installer_path: Optional[str] = None,
         out_path: Optional[str] = None,
+        cleanup: bool = True,
     ):
         self.__fs_root_dir = fs_root_dir
         self.__br_type = br_type.upper()
         self.__fs_type = fs_type.upper()
         self.__path = out_path if out_path else tempfile.mkstemp()[1]
+        self.__should_cleanup = cleanup
 
         if hyper_config is not None:
             with open(os.path.join(fs_root_dir, "hyper.cfg"), "w") as f:
@@ -144,4 +146,5 @@ class DiskImage:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        os.remove(self.__path)
+        if self.__should_cleanup:
+            os.remove(self.__path)
