@@ -189,6 +189,8 @@ def make_fs(
         if fs_type.startswith("FAT"):
             make_fat(tf.name, size, fs_type == "FAT32")
             fat_fill(tf.name, root_path)
+            if uefi_root_path:
+                fat_fill(tf.name, uefi_root_path)
         else:
             raise RuntimeError(f"Unknown filesystem type {fs_type}")
 
