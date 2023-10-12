@@ -58,6 +58,7 @@ class DiskImage:
     def __init__(
         self, fs_root_dir: str, br_type: str,
         fs_type: str, fs_size_mb: Optional[int] = None,
+        hyper_config: Optional[str] = None,
         hyper_uefi_binary_path: Optional[str] = None,
         hyper_iso_br_path: Optional[str] = None,
         hyper_installer_path: Optional[str] = None,
@@ -67,6 +68,10 @@ class DiskImage:
         self.__br_type = br_type.upper()
         self.__fs_type = fs_type.upper()
         self.__path = out_path if out_path else tempfile.mkstemp()[1]
+
+        if hyper_config is not None:
+            with open(os.path.join(fs_root_dir, "hyper.cfg"), "w") as f:
+                f.write(hyper_config)
 
         is_iso = self.fs_type == "ISO9660"
 
