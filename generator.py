@@ -153,7 +153,7 @@ def make_iso(
         fat_image = os.path.join(root_path, "efi_esp")
         file_resize_to_mib(fat_image, 1)
         make_fat(fat_image, 1, False)
-        fat_recursive_copy(fat_image, os.path.join(root_path, uefi_root_path))
+        fat_fill(fat_image, uefi_root_path)
 
         xorriso_args.extend([
             "--efi-boot", "efi_esp", "-efi-boot-part", "--efi-boot-image"
