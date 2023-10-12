@@ -1,3 +1,5 @@
+import os.path
+
 from . import path_guesser as pg
 import subprocess
 from typing import Optional
@@ -35,3 +37,21 @@ def get_path_to_qemu_uefi_firmware(arch: str) -> Optional[str]:
                      .get("filename", {})
 
     return pg.valid_path_or_none(guess) if guess else None
+
+
+def guess_canonical_file_name_for_binary(path: str) -> str:
+    out_name = os.path.basename(path)
+
+    try:
+        file_type = subprocess.check_output(["file", path], text=True).lower()
+    except Exception:
+        return out_name
+
+    if "aarch64" in file_type:
+        out_name = "BOOTAA64.EFI"
+    elif "x86-64" in file_type:
+        out_name = "BOOTX64.EFI"
+    elif "Intel 80386" in file_type:
+        out_name = "BOOTIA32.EFI"
+
+    return out_name
