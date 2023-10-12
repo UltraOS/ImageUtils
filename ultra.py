@@ -1,5 +1,5 @@
-from . import generator as g
-from typing import Optional
+from . import generator as g, uefi
+from typing import Optional, List
 import tempfile
 import subprocess
 import os
@@ -59,7 +59,7 @@ class DiskImage:
         self, fs_root_dir: str, br_type: str,
         fs_type: str, fs_size_mb: Optional[int] = None,
         hyper_config: Optional[str] = None,
-        hyper_uefi_binary_path: Optional[str] = None,
+        hyper_uefi_binary_paths: List[str] = [],
         hyper_iso_br_path: Optional[str] = None,
         hyper_installer_path: Optional[str] = None,
         out_path: Optional[str] = None,
@@ -92,11 +92,17 @@ class DiskImage:
                                   DiskImage.part_align_mibs, fs_size_mb)
 
         uefi_root_path = None
-        if hyper_uefi_binary_path is not None:
+        if hyper_uefi_binary_paths:
             uefi_root_path = tempfile.TemporaryDirectory()
             efi_boot_path = os.path.join(uefi_root_path.name, "EFI/BOOT")
             os.makedirs(efi_boot_path)
-            shutil.copy(hyper_uefi_binary_path, efi_boot_path)
+
+            for binary in hyper_uefi_binary_paths:
+                out_path = os.path.join(
+                    efi_boot_path,
+                    uefi.guess_canonical_file_name_for_binary(binary)
+                )
+                shutil.copy(binary, out_path)
 
         g.make_fs(self.__path, self.__fs_type, DiskImage.part_align_mibs,
                   fs_size_mb, self.__fs_root_dir,
