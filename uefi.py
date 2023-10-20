@@ -6,7 +6,15 @@ from typing import Optional
 
 
 def get_path_to_qemu_uefi_firmware(arch: str) -> Optional[str]:
-    edk2_arch = "x86_64" if "amd64" else arch
+    edk2_arch = {
+        "x86_64": "x86_64",
+        "amd64": "x86_64",
+        "x64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+        "arm": "arm",
+        "aarch32": "arm",
+    }[arch.lower()]
 
     prefixes = [
         "/usr",
