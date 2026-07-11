@@ -100,12 +100,14 @@ def build_mbr_image(
     path: str, primaries: List[Partition],
     logicals: Optional[List[Partition]] = None,
     installer_path: Optional[str] = None,
+    boot_partition: Optional[int] = None,
 ) -> None:
     """
     Lay out `primaries` as MBR primary partitions (indices 0..N-1) followed by,
     if `logicals` is given, an extended partition holding them as an EBR chain
     (indices 4, 5, ...). If `installer_path` is set, the BIOS stage2 is
-    embedded afterwards.
+    embedded afterwards; `boot_partition`, if given, is baked into it so the
+    loader pins that partition as the origin.
     """
     logicals = logicals or []
     assert len(primaries) <= (3 if logicals else 4)
@@ -183,7 +185,10 @@ def build_mbr_image(
         os.remove(fs_img)
 
     if installer_path is not None:
-        subprocess.check_call([installer_path, path])
+        args = [installer_path, path]
+        if boot_partition is not None:
+            args += ["--boot-partition", str(boot_partition)]
+        subprocess.check_call(args)
 
 
 def _sgdisk_first_sector(image: str, part_num: int) -> int:
