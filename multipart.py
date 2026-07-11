@@ -201,6 +201,29 @@ def _sgdisk_first_sector(image: str, part_num: int) -> int:
     raise RuntimeError(f"couldn't find first sector for partition {part_num}")
 
 
+def inject_into_esp(image: str, esp_part_num: int,
+                    files: Dict[str, str]) -> None:
+    """
+    Copy host files into the FAT EFI system partition sitting at GPT partition
+    `esp_part_num` of `image`, addressing it in place through an mtools offset.
+    Lets a test seed content onto the ESP embedded in a hybrid ISO after
+    xorriso has built it, so the partition can be addressed (hdN-partN::/...)
+    without the image builder having to know about it.
+    """
+    off = _sgdisk_first_sector(image, esp_part_num) * SECTOR_SIZE
+    drive = f"{image}@@{off}"
+
+    for arc_name, host_path in files.items():
+        parent = os.path.dirname(arc_name)
+        if parent:
+            # mmd fails if the directory already exists, which is
+            # harmless here.
+            subprocess.run(["mmd", "-i", drive, f"::/{parent}"],
+                           stderr=subprocess.DEVNULL)
+        subprocess.check_call(["mcopy", "-i", drive, host_path,
+                               f"::/{arc_name}"])
+
+
 def build_gpt_image(
     path: str, partitions: List[Partition], disk_guid: str,
     installer_path: Optional[str] = None,
