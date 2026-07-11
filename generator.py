@@ -3,7 +3,7 @@ import platform
 import os
 import shutil
 import tempfile
-from typing import Optional
+from typing import List, Optional, Tuple
 
 
 def _dd_mebibyte_postfix() -> str:
@@ -111,6 +111,86 @@ def image_partition(
     part_fn(path, br_type, fs_type, align_mib, part_len_mib)
 
 
+def _fat32_reset_next_free_hint(raw_fs_path: str) -> None:
+    """
+    Point the FAT32 FSInfo next-free-cluster hint back at the start of the data
+    area. mcopy allocates starting from this hint (unlike on FAT12/16, where it
+    always scans from the start), so without resetting it new files are placed
+    after the last allocation instead of first-fitting into freed holes.
+    """
+    with open(raw_fs_path, "r+b") as f:
+        f.seek(11)
+        bytes_per_sector = int.from_bytes(f.read(2), "little")
+        f.seek(22)
+        legacy_sectors_per_fat = int.from_bytes(f.read(2), "little")
+        assert legacy_sectors_per_fat == 0, "not a FAT32 filesystem"
+
+        f.seek(48)
+        fs_info_sector = int.from_bytes(f.read(2), "little")
+
+        f.seek(fs_info_sector * bytes_per_sector)
+        assert f.read(4) == b"RRaA", "FSInfo signature mismatch"
+
+        f.seek(fs_info_sector * bytes_per_sector + 492)
+        f.write((2).to_bytes(4, "little"))
+
+
+def _fat_cluster_bytes(raw_fs_path: str) -> int:
+    out = subprocess.check_output(["minfo", "-i", raw_fs_path]).decode()
+    sector_bytes = None
+    cluster_sectors = None
+
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("sector size:"):
+            sector_bytes = int(line.split(":")[1].split()[0])
+        elif line.startswith("cluster size:"):
+            cluster_sectors = int(line.split(":")[1].split()[0])
+
+    assert sector_bytes and cluster_sectors
+    return sector_bytes * cluster_sectors
+
+
+def fat_copy_fragmented(
+    raw_fs_path: str, dest_name: str, fill_byte: int, fragments: int,
+    is_fat32: bool
+) -> None:
+    """
+    Copy a 'fragments'-cluster file filled with 'fill_byte' such that every
+    cluster of it is physically discontiguous: allocate two padding files per
+    fragment, punch out every other one, and let mcopy's first-fit allocation
+    scatter the file into the holes. The surviving padding files (and the stale
+    contents of the punched-out ones) hold the complement of 'fill_byte', so a
+    loader that resolves any part of the file to a wrong cluster reads a
+    mismatching byte. Must run on a freshly formatted image, before any other
+    files are copied in.
+    """
+    cluster_bytes = _fat_cluster_bytes(raw_fs_path)
+
+    with tempfile.TemporaryDirectory() as td:
+        pad_names = [f"F{i:04d}.PAD" for i in range(fragments * 2)]
+        pad_data = bytes([fill_byte ^ 0xFF]) * cluster_bytes
+
+        for name in pad_names:
+            with open(os.path.join(td, name), "wb") as f:
+                f.write(pad_data)
+
+        subprocess.check_call(["mcopy", "-i", raw_fs_path] +
+                              [os.path.join(td, n) for n in pad_names] +
+                              ["::"])
+        subprocess.check_call(["mdel", "-i", raw_fs_path] +
+                              [f"::{n}" for n in pad_names[::2]])
+
+        if is_fat32:
+            _fat32_reset_next_free_hint(raw_fs_path)
+
+        target_path = os.path.join(td, dest_name)
+        with open(target_path, "wb") as f:
+            f.write(bytes([fill_byte]) * (cluster_bytes * fragments))
+
+        subprocess.check_call(["mcopy", "-i", raw_fs_path, target_path, "::"])
+
+
 def fat_recursive_copy(raw_fs_path: str, file_path: str) -> None:
     subprocess.check_call([
         "mcopy", "-Q", "-i", raw_fs_path, "-s", file_path, "::"
@@ -177,9 +257,11 @@ def make_fs(
     image_path: str, fs_type: str, image_mib_offset: int,
     size: Optional[int], root_path: str,
     uefi_root_path: Optional[str] = None,
-    iso_br_path: Optional[str] = None
+    iso_br_path: Optional[str] = None,
+    fragmented_files: Optional[List[Tuple[str, int, int]]] = None
 ) -> None:
     if fs_type == "ISO9660":
+        assert not fragmented_files
         return make_iso(image_path, root_path, uefi_root_path, iso_br_path)
 
     with tempfile.NamedTemporaryFile() as tf:
@@ -188,6 +270,10 @@ def make_fs(
 
         if fs_type.startswith("FAT"):
             make_fat(tf.name, size, fs_type == "FAT32")
+
+            for ff in fragmented_files or []:
+                fat_copy_fragmented(tf.name, *ff, fs_type == "FAT32")
+
             fat_fill(tf.name, root_path)
             if uefi_root_path:
                 fat_fill(tf.name, uefi_root_path)

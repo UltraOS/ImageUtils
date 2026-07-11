@@ -1,5 +1,5 @@
 from . import generator as g, uefi
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import tempfile
 import subprocess
 import os
@@ -64,6 +64,7 @@ class DiskImage:
         hyper_installer_path: Optional[str] = None,
         out_path: Optional[str] = None,
         cleanup: bool = True,
+        fragmented_files: Optional[List[Tuple[str, int, int]]] = None,
     ):
         self.__fs_root_dir = fs_root_dir
         self.__br_type = br_type.upper()
@@ -109,7 +110,7 @@ class DiskImage:
         g.make_fs(self.__path, self.__fs_type, DiskImage.part_align_mibs,
                   fs_size_mb, self.__fs_root_dir,
                   uefi_root_path.name if uefi_root_path else None,
-                  hyper_iso_br_path)
+                  hyper_iso_br_path, fragmented_files)
 
         if uefi_root_path is not None:
             uefi_root_path.cleanup()
