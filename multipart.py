@@ -203,8 +203,15 @@ def _sgdisk_first_sector(image: str, part_num: int) -> int:
 
 def build_gpt_image(
     path: str, partitions: List[Partition], disk_guid: str,
+    installer_path: Optional[str] = None,
+    boot_partition: Optional[int] = None,
 ) -> None:
-    """Create a GPT image with pinned disk/partition GUIDs via sgdisk."""
+    """
+    Create a GPT image with pinned disk/partition GUIDs via sgdisk. If
+    `installer_path` is set, the BIOS stage2 is installed afterwards (into a
+    synthesized BIOS boot partition); `boot_partition`, if given, is baked into
+    it so the loader pins that partition as the origin.
+    """
     total_mib = ALIGN_MIB + sum(p.size_mib for p in partitions) + 1
     g.file_resize_to_mib(path, total_mib)
 
@@ -225,3 +232,9 @@ def build_gpt_image(
         fs_img = _make_fat(part)
         _dd_embed_sectors(path, sector, fs_img)
         os.remove(fs_img)
+
+    if installer_path is not None:
+        args = [installer_path, path]
+        if boot_partition is not None:
+            args += ["--boot-partition", str(boot_partition)]
+        subprocess.check_call(args)
