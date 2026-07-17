@@ -117,7 +117,7 @@ class DiskImage:
 
         should_install = False
 
-        if hyper_installer_path is not None and self.__br_type != "GPT":
+        if hyper_installer_path is not None:
             should_install = True
 
         # Hybrid boot depends on having stage2 pointed to by el-torito
