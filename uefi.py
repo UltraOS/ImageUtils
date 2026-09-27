@@ -1,8 +1,54 @@
-import os.path
+import json
+import os
 
 from . import path_guesser as pg
 import subprocess
 from typing import Optional
+
+
+def _is_usable_flash_descriptor(desc: dict, edk2_arch: str) -> bool:
+    if "uefi" not in desc.get("interface-types", []):
+        return False
+
+    mapping = desc.get("mapping", {})
+    if mapping.get("device") != "flash":
+        return False
+    if mapping.get("executable", {}).get("format") != "raw":
+        return False
+
+    if "requires-smm" in desc.get("features", []):
+        return False
+
+    targets = desc.get("targets", [])
+    return any(t.get("architecture") == edk2_arch for t in targets)
+
+
+def _find_flash_firmware(
+    descriptor_dir: str, edk2_arch: str
+) -> Optional[str]:
+    try:
+        names = sorted(os.listdir(descriptor_dir))
+    except OSError:
+        return None
+
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+
+        try:
+            with open(os.path.join(descriptor_dir, name)) as file:
+                desc = json.load(file)
+        except (OSError, ValueError):
+            continue
+
+        if not _is_usable_flash_descriptor(desc, edk2_arch):
+            continue
+
+        path = desc["mapping"]["executable"].get("filename")
+        if path and pg.valid_path_or_none(path):
+            return path
+
+    return None
 
 
 def get_path_to_qemu_uefi_firmware(arch: str) -> Optional[str]:
@@ -29,22 +75,14 @@ def get_path_to_qemu_uefi_firmware(arch: str) -> Optional[str]:
     except FileNotFoundError:
         pass
 
-    res = pg.valid_path_with_prefixes_or_none(
-        prefixes,
-        f"share/qemu/firmware/60-edk2-{edk2_arch}.json"
-    )
-    if res is None:
-        return None
+    for prefix in prefixes:
+        res = _find_flash_firmware(
+            os.path.join(prefix, "share/qemu/firmware"), edk2_arch
+        )
+        if res is not None:
+            return res
 
-    import json
-    with open(res) as file:
-        path_json = json.load(file)
-
-    guess = path_json.get("mapping", {}) \
-                     .get("executable", {}) \
-                     .get("filename", {})
-
-    return pg.valid_path_or_none(guess) if guess else None
+    return None
 
 
 def guess_canonical_file_name_for_binary(path: str) -> str:
