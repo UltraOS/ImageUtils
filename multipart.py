@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """
 Builder for multi-partition disk images used by the partition-addressing tests.
 

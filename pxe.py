@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """
 Builder for the TFTP root served to a loader over a (simulated) PXE boot.
 
